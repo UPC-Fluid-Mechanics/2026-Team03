@@ -221,3 +221,407 @@ The table below compares the initial cascade ($DF = 0.50$) and the optimized des
 | Stagger angle ($\xi = \frac{\beta'_1 + \beta'_2}{2}$) | 62.24° | **73.81°** |
 
 Optimizing the chord to $l = 10.03\text{ mm}$ lowers the Diffusion Factor to **$DF = 0.3765$**/providing a wide safety margin against flow separation/and reduces the required camber to **$9.29^\circ$**. We use theses values to design our impellers (CAD) and for our simulation (CFD).
+
+# Part 2 : CFD Analysis
+
+## 1. Introduction
+
+Optimizing the aerodynamic performance of a PC fan requires carefully balancing key fluid dynamic parameters—primarily maximizing volumetric airflow and static pressure rise while minimizing flow separation and turbulence. Relying solely on physical prototyping to achieve these aerodynamic targets is both costly and time-consuming. Therefore, integrating Computer-Aided Design (CAD) with Computational Fluid Dynamics (CFD) is essential to the engineering workflow. 
+
+By utilizing cloud-based platforms such as Onshape and SimScale, this iterative process becomes highly agile. Onshape enables precise 3D modeling and rapid parametric adjustments of complex blade geometries, while SimScale provides immediate cloud-based CFD simulations to analyze velocity fields, pressure distributions, and aerodynamic efficiency prior to manufacturing. This workflow significantly reduces prototyping costs, prevents material waste, and yields a faster, more reliable, and aerodynamically optimized design.
+
+---
+
+## 2. 2D Cascade Analysis
+
+### 2.1 Design Targets
+
+While the airflow inside a turbomachine is inherently three-dimensional, unsteady, and complex, it can be effectively simplified during the preliminary design stages by modeling it as a steady, two-dimensional blade cascade. Based on the preliminary mean-line sizing calculations, the objective of this section is to numerically evaluate the aerodynamic performance and efficiency of the axial fan blade section using the following target parameters:
+
+| Parameter | Symbol | Target Value |
+| :--- | :---: | :---: |
+| Blade span (extrusion length) | $z$ | $35\text{ mm}$ |
+| Lift coefficient | $C_L$ | $1.0$ |
+| Static pressure rise | $\Delta P_s$ | $4.9\text{ Pa}$ |
+| Camber angle | $\theta$ | $9.2925^\circ$ |
+| Deviation angle | $\delta$ | $6.4944^\circ$ |
+| Chord length | $l$ | $10.03\text{ mm}$ |
+| Stagger angle | $\xi$ | $73.8111^\circ$ |
+| Diffusion factor | $DF$ | $0.3765$ |
+| Pitch-to-chord ratio | $s/l$ | $3.6$ |
+
+---
+
+### 2.2 CAD Modeling
+
+A 4-digit NACA airfoil profile was selected for the axial fan blade due to its balance of geometric simplicity, aerodynamic robustness, and numerical stability. Because these profiles are defined by exact, smooth analytical polynomials rather than discrete tabulated points, they eliminate surface curvature discontinuities in CAD and prevent artificial pressure spikes or premature flow separation in the boundary-layer mesh. Aerodynamically, their relatively generous leading-edge radius provides high tolerance to incidence variations across off-design operating points, while their predictable behavior at low Reynolds numbers mitigates severe laminar separation bubbles. Furthermore, since classical 1D/2D turbomachinery cascade correlations were calibrated on standard airfoil families, using a 4-digit NACA profile enables direct benchmarking between preliminary analytical calculations and CFD results.
+
+A 4-digit NACA airfoil is designated as **NACA MPXX**, where:
+- **$M$**: Maximum camber in percentage of the chord length.
+- **$P$**: Position of the maximum camber in tenths of the chord length.
+- **$XX$**: Maximum thickness in percentage of the chord length.
+
+From the target camber angle ($\theta = 9.2925^\circ$), the maximum camber $f_{\max}$ and first digit $M$ are calculated as:
+
+$$
+f_{\max} = \frac{l}{2} \tan\left(\frac{\theta}{4}\right)
+$$
+
+$$
+M = 100 \cdot \frac{f_{\max}}{l} = 50 \tan\left(\frac{9.2925^\circ}{4}\right) \approx 2.03 \implies M = 2
+$$
+
+To remain fully consistent with the assumptions of the 2D cascade analytical model, the second digit is set to **$P = 5$**, placing the maximum camber at $50\%$ of the chord length. Both the camber angle $\theta$ and Howell's deviation correlation assume a circular-arc camber line ($a/l = 0.5$), whose geometric apex naturally lies at mid-chord.
+
+The last two digits are set to **$XX = 12$**, corresponding to a maximum thickness-to-chord ratio of $12\%$ ($t_{\max}/l = 0.12$). Given the short chord length at the mean radius ($l = 10.03\text{ mm}$), a $12\%$ thickness yields a physical thickness of approximately $1.20\text{ mm}$, ensuring sufficient structural rigidity against aerodynamic and centrifugal loads while remaining practical to manufacture. This results in the **NACA 2512** profile.
+
+The airfoil coordinates were generated using [Airfoil Tools (NACA 4-Digit Generator)](http://airfoiltools.com/airfoil/naca4digit) and exported as a CSV file. Before importing into Onshape, a third column containing zero values ($z = 0$) must be added to the CSV file so that Onshape's *3D Fit Spline* / routing curve tool can properly parse the 3D point cloud. Once imported (in millimeters), the profile was scaled uniformly by a factor of **$10.03$** to match the target chord length ($l = 10.03\text{ mm}$), filled into a planar surface, and extruded (thickened) to a span of **$z = 0.035\text{ m}$ ($35\text{ mm}$)**, as shown below.
+
+| Scaling the NACA 2512 Profile ($l = 10.03\text{ mm}$) | Extruding the Blade Span ($z = 35\text{ mm}$) |
+| :---: | :---: |
+| ![Blade Chord Scaling](<Release_01_Images/Photo of the scale of the blade.png>) | ![Blade Span Extrusion](<Release_01_Images/photo of the thickness of the blade.png>) |
+
+Finally, the CAD geometry was imported into SimScale and rotated around the spanwise $z$-axis to apply the required stagger angle ($\xi = 73.8111^\circ$).
+
+---
+
+### 2.3 CFD Setup and Simulation
+
+#### 2.3.1 Computational Domain and Meshing
+
+Generating a high-quality computational mesh is foundational to achieving accurate, stable, and reliable CFD results, as spatial discretization governs how accurately the Navier-Stokes equations are resolved. Proper refinement in high-gradient regions—such as boundary layers, leading and trailing edges, and downstream wakes—is essential to capture wall shear stresses, pressure distributions, and potential flow separation without excessive numerical diffusion.
+
+For this 2D cascade simulation, SimScale's **Hex-dominant Parametric** meshing algorithm was selected because it provides granular control over local discretization while minimizing numerical diffusion through flow-aligned hexahedral cells:
+
+1. **Background Mesh Box & Domain Dimensions:** 
+   A background mesh box was defined with bounding coordinates from $\min(-0.3, -0.018, 0)\text{ m}$ to $\max(0.9, 0.018, 0.035)\text{ m}$ and a base cell resolution of $(100, 3, 3)$ to maintain near-cubic cells.
+   - **Pitchwise ($y$-direction):** Bounded between $-s/2$ and $+s/2$ ($\pm 0.018\text{ m}$, matching $s = 3.6 \times l \approx 0.036\text{ m}$) around the centered airfoil. Applying translational periodic boundary conditions to the upper and lower faces replicates the aerodynamic interference of an infinite cascade without meshing the full rotor.
+   - **Streamwise ($x$-direction):** Extended far upstream and downstream of the blade so that the inflow remains uniform and undisturbed by the airfoil's upstream potential field, while allowing full wake dissipation and pressure recovery before the outlet.
+   - **Spanwise ($z$-direction):** Constrained directly to the two spanwise faces of the extruded section ($0$ to $0.035\text{ m}$) with symmetry boundary conditions to enforce a strictly two-dimensional flow regime free of 3D tip-vortex or end-wall effects.
+
+2. **Local Refinements:** 
+   A **Level 5** surface and region refinement was applied around the airfoil and its immediate wake to resolve steep velocity and pressure gradients near the leading and trailing edges while keeping the far-field mesh coarse.
+
+![Computational Domain and Refinement Box](<Release_01_Images/Mesh box blue.png>)
+
+3. **Boundary Layer Inflation & $y^+$ Calculation:**
+   To capture boundary-layer dynamics while optimizing computational cost via standard wall functions, the first cell center must lie within the logarithmic region ($y^+ \ge 30$).
+
+![Dimensionless Wall Distance y+ Regions](<Release_01_Images/y+ schemes.png>)
+
+The dimensionless wall distance $y^+$ is defined as:
+
+$$
+y^+ = \frac{y \, u_\tau}{\nu} \tag{1}
+$$
+
+where $y$ is the normal distance from the wall to the first cell center, $\nu = 1.529 \times 10^{-5}\text{ m}^2/\text{s}$ is the kinematic viscosity of air, and $u_\tau$ is the friction velocity:
+
+$$
+u_\tau = \sqrt{\frac{\tau_w}{\rho}} \tag{2}
+$$
+
+With air density $\rho = 1.196\text{ kg/m}^3$, relative inlet velocity $W_1 = 9.11\text{ m/s}$, and chord length $c \approx 0.01\text{ m}$, the chord-based Reynolds number is:
+
+$$
+\text{Re}_c = \frac{W_1 \, c}{\nu} = \frac{9.11 \times 0.01}{1.529 \times 10^{-5}} \approx 5\,958
+$$
+
+Using the flat-plate turbulent boundary-layer correlation for the skin friction coefficient $C_f$:
+
+$$
+C_f = \frac{0.058}{\text{Re}_c^{0.2}} = \frac{0.058}{(5958)^{0.2}} \approx 0.0102
+$$
+
+The wall shear stress $\tau_w$ and friction velocity $u_\tau$ are:
+
+$$
+\tau_w = \frac{1}{2} \rho W_1^2 C_f = 0.5 \times 1.196 \times (9.11)^2 \times 0.0102 \approx 0.506\text{ Pa}
+$$
+
+$$
+u_\tau = \sqrt{\frac{0.506}{1.196}} \approx 0.650\text{ m/s}
+$$
+
+Rearranging Equation (1) for $y^+ \gt 30$:
+
+$$
+y = \frac{y^+ \, \nu}{u_\tau} \gt \frac{30 \times 1.529 \times 10^{-5}}{0.650} \approx 7.05 \times 10^{-4}\text{ m}
+$$
+
+Since $y$ represents the distance to the **center** of the first cell, the total height of the first boundary-layer cell ($\Delta y = 2y$) must satisfy $\Delta y \gt 1.41 \times 10^{-3}\text{ m}$ ($1.41\text{ mm}$). The boundary-layer inflation in SimScale was therefore configured with:
+- **Number of layers:** $2$
+- **Expansion ratio:** $1.2$
+- **Minimum first layer thickness ($\Delta y$):** $1.5 \times 10^{-3}\text{ m}$ ($1.5\text{ mm}$)
+- **Final layer thickness:** $0.5$ (relative)
+
+This yields an actual dimensionless wall distance of:
+
+$$
+y^+ = \frac{(\Delta y / 2) \, u_\tau}{\nu} = \frac{0.75 \times 10^{-3} \times 0.650}{1.529 \times 10^{-5}} \approx 31.9 \gt 30
+$$
+
+confirming that the first cell center lies just inside the log-law region.
+
+| Global Domain Mesh | Local Airfoil and Boundary Layer Mesh |
+| :---: | :---: |
+| ![Global Mesh](<Release_01_Images/mesh global.png>) | ![Local Airfoil Mesh](<Release_01_Images/mesh airfoil.png>) |
+
+---
+
+#### 2.3.2 Boundary Conditions
+
+To simulate steady, incompressible airflow through the 2D blade cascade, the following boundary conditions were applied:
+- **Velocity Inlet ($x_{\min}$):** Fixed uniform relative velocity vector $\vec{W}_1 = (2.82,\; 8.66,\; 0)\text{ m/s}$, corresponding to a magnitude of $W_1 = \sqrt{2.82^2 + 8.66^2} = 9.11\text{ m/s}$ and an inlet flow angle $\beta_1 = \arctan(8.66 / 2.82) = 71.96^\circ$.
+- **Pressure Outlet ($x_{\max}$):** Fixed static gauge pressure of $P_{\text{out}} = 4.9\text{ Pa}$.
+- **Periodic Faces ($y_{\min}, y_{\max}$):** Translational periodic boundary conditions matching the blade pitch ($s = 0.036\text{ m}$).
+- **Lateral Faces ($z_{\min}, z_{\max}$):** Symmetry boundary conditions to enforce 2D flow behavior.
+- **Airfoil Surface:** No-slip wall boundary condition with standard wall functions.
+
+---
+
+#### 2.3.3 Flow Field Analysis
+
+![Velocity Magnitude Contour](<Release_01_Images/velocity magnitude.png>)
+
+The velocity magnitude contour illustrates the flow deflection and acceleration around the NACA 2512 airfoil. A distinct high-velocity region (in red/orange, peaking at $11.08\text{ m/s}$) develops over the suction side just downstream of the leading edge, indicating the local static pressure drop responsible for lift generation. Conversely, the flow decelerates sharply at the leading-edge stagnation point and within the boundary layer along the airfoil wall (in blue). Downstream of the trailing edge, a well-defined wake (in green/yellow) exhibits a clear momentum deficit, while the parallel oblique bands confirm the periodicity across adjacent blade passages.
+
+**Physical Consistency:**
+- **Flow Turning:** The downstream wake visibly deflects upward compared to the incoming flow angle, confirming that the blade successfully imparts angular momentum to the fluid.
+- **Pressure–Suction Asymmetry:** Strong acceleration along the upper (suction) surface contrasted with lower velocities along the lower (pressure) surface confirms positive aerodynamic loading.
+- **Boundary Layer & Periodicity:** Smooth boundary-layer attachment without massive stall and seamless continuity of the periodic wakes validate both the angle of attack and the numerical setup.
+
+By extracting the area-averaged streamwise ($W_{2,x}$) and pitchwise ($W_{2,y}$) velocity components downstream of the trailing edge, the outlet relative flow angle $\beta_2$ is computed as:
+
+$$
+\beta_2 = \arctan\left(\frac{W_{2,y}}{W_{2,x}}\right)
+$$
+
+---
+
+#### 2.3.4 Results and Discussion
+
+| Parameter | Analytical Theory ($C_L = 1.0$) | CFD Simulation | Deviation |
+| :--- | :---: | :---: | :---: |
+| **Inlet relative angle ($\beta_1$)** | $71.96^\circ$ | $71.96^\circ$ | $0.00^\circ$ |
+| **Outlet relative angle ($\beta_2$)** | $69.16^\circ$ | $70.03^\circ$ | $+0.87^\circ$ |
+| **Flow deflection ($\epsilon = \beta_1 - \beta_2$)** | $2.80^\circ$ | $1.93^\circ$ | $-0.87^\circ$ |
+| **Inlet relative velocity ($W_1$)** | $9.11\text{ m/s}$ | $9.11\text{ m/s}$ | $0.00\text{ m/s}$ |
+| **Outlet relative velocity ($W_2$)** | $7.93\text{ m/s}$ | $8.26\text{ m/s}$ | $+0.33\text{ m/s}$ |
+| **Lift coefficient ($C_L$)** | $1.000$ | $0.536$ | $-46.4\%$ |
+| **Drag coefficient ($C_D$)** | $0.0200$ | $0.0746$ | $+273\%$ |
+| **Diffusion factor ($DF$)** | $0.3765$ | $0.2510$ | $-33.3\%$ |
+| **Static pressure rise ($\Delta p$)** | $10.83\text{ Pa}$ | $6.03\text{ Pa}$ | $-44.3\%$ |
+| **Hydraulic efficiency ($\eta_h$)** | $100\%$ *(ideal assumption)* | $59.3\%$ | $-40.7\%$ |
+
+The discrepancies between the analytical predictions and the CFD results are primarily driven by **low Reynolds number viscous effects** ($\text{Re}_c \approx 6\,000$) and the limitations of classical empirical cascade correlations:
+
+1. **Boundary-Layer Thickening and Increased Drag:** Howell's deviation rule and the preliminary drag estimate ($C_D \approx 0.02$) were derived from wind-tunnel cascade tests operating at much higher Reynolds numbers ($\text{Re}_c \gt 10^5$), where boundary layers remain thin and energized. At $\text{Re}_c \approx 6\,000$, viscous forces dominate, significantly thickening the suction-side boundary layer and sharply increasing skin friction and form drag ($C_D = 0.0746$ vs. $0.0200$).
+2. **Reduced Effective Camber and Flow Turning:** This viscous thickening alters the effective aerodynamic camber of the airfoil and increases the outlet deviation angle ($\delta$), reducing the actual flow deflection ($\beta_2 = 70.03^\circ$ instead of $69.16^\circ$, giving $\epsilon = 1.93^\circ$).
+3. **Drop in Lift and Pressure Rise:** Because Euler's turbomachinery equation directly links pressure rise to the change in tangential velocity ($\Delta c_\theta$), the reduced flow turning leads to a proportional drop in lift coefficient ($C_L = 0.536$), diffusion factor ($DF = 0.251$), and actual static pressure rise ($\Delta p = 6.03\text{ Pa}$ vs. $10.83\text{ Pa}$).
+4. **Numerical Modeling Consideration:** Additionally, at $\text{Re}_c \approx 6\,000$, the boundary layer is largely transitional or laminar rather than fully turbulent. Using a high-$y^+$ wall-function mesh ($y^+ \approx 31.9$, where the first cell height of $1.5\text{ mm}$ represents $15\%$ of the $10\text{ mm}$ chord) introduces extra numerical dissipation near the wall. In future iterations, resolving the viscous sublayer directly ($y^+ \lt 1$) with a low-Reynolds turbulence model (such as $k\text{-}\omega\text{ SST}$) would capture the near-wall velocity profile with even greater fidelity.
+
+## References & Acknowledgments
+
+### Literature & Course Materials
+* **Dixon, S. L., & Hall, C. A.** (2010). *Fluid Mechanics and Thermodynamics of Turbomachinery* (6th ed.). Oxford: Butterworth-Heinemann / Elsevier. ISBN: 978-1856177931.
+* **Castilla López, R.** *Advanced Fluid Dynamic Design* — Lecture notes and course repository on GitHub (Universitat Politècnica de Catalunya - UPC).
+
+### Software, Tools & Tutorials
+* **Airfoil Tools.** *NACA 4-Digit Airfoil Generator (NACA 2512)*. Available at: [http://airfoiltools.com/airfoil/naca4digit](http://airfoiltools.com/airfoil/naca4digit?MNaca4DigitForm%5Bcamber%5D=2&MNaca4DigitForm%5Bposition%5D=50&MNaca4DigitForm%5Bthick%5D=12&MNaca4DigitForm%5BnumPoints%5D=200&MNaca4DigitForm%5BcosSpace%5D=0&MNaca4DigitForm%5BcosSpace%5D=1&MNaca4DigitForm%5BcloseTe%5D=0&yt0=Plot).
+* **SimScale.** *2D Airfoil & Turbomachinery Cascade CFD Simulation Tutorials and Documentation*. Available at: [https://www.simscale.com/docs/](https://www.simscale.com/docs/).
+
+### AI Assistance Disclosure
+* Generative AI tools were used to format LaTeX mathematical equations and refine the English academic phrasing of this report. All engineering calculations, CAD geometries, CFD setups, and physical analyses were independently performed and verified by the author.
+
+# Part 3 : Experimental Work Package & Test Bench Specification
+
+## 3.1. <u>Objectives & Relevant Variables of the Axial Fan</u>
+
+### 3.1.1 Experimental Scope & Validation Role
+
+The primary objective of the experimental work package is to design, instrument, and operate a standardized aerodynamic test bench to characterize our 120 mm axial PC cooling fan. Physical testing serves as the empirical ground truth needed to validate the 1D mean-line aerodynamic calculations and the 3D Reynolds-Averaged Navier-Stokes (RANS) CFD simulations across the complete operational envelope.
+
+### 3.1.2 Target Fan Specifications & Operational Domain
+
+Based on the design targets established in Release 0, our physical test rig must evaluate a compact 120 mm axial fan operating under the following nominal parameters:
+
+- **Impeller Outer Diameter (*D*):** 120 mm (0.12 m)
+- **Hub Diameter (*D*<sub>hub</sub>):** 50 mm (Hub-to-tip ratio ν = 0.417)
+- **Design Rotational Speed (*N*):** 1800 rpm (ω = 188.5 rad/s)
+- **Design Static Pressure Rise (Δ*p*<sub>s</sub>):** 60 Pa
+- **Design Volumetric Airflow (*q*<sub>V</sub>):** 0.02639 m³/s (95.0 m³/h or 55.9 CFM)
+
+### 3.1.3 Relevant Aerodynamic & Dimensionless Variables
+
+To evaluate fan performance independently of ambient atmospheric variations, raw sensor measurements are reduced to standardized dimensional and dimensionless parameters:
+
+| Variable | Symbol | Definition / Formula | Units | Physical Significance |
+| :--- | :---: | :---: | :---: | :--- |
+| **Volumetric Airflow** | *q*<sub>V</sub> | *q*<sub>V</sub> = ∫ *v*<sub>z</sub> d*A* | m³/s | Cooling air delivery capacity |
+| **Static Pressure Rise** | Δ*p*<sub>s</sub> | Δ*p*<sub>s</sub> = *p*<sub>s4</sub> − *p*<sub>a</sub> | Pa | Head available to overcome system impedance |
+| **Dynamic Pressure** | *p*<sub>d2</sub> | *p*<sub>d2</sub> = ½ ρ<sub>a</sub> (*q*<sub>V</sub> / *A*<sub>fan</sub>)² | Pa | Kinetic energy of the discharge jet |
+| **Fan Total Pressure** | Δ*p*<sub>t</sub> | Δ*p*<sub>t</sub> = Δ*p*<sub>s</sub> + *p*<sub>d2</sub> | Pa | Total mechanical energy imparted to fluid |
+| **Air Aerodynamic Power** | *P*<sub>u</sub> | *P*<sub>u</sub> = *q*<sub>V</sub> · Δ*p*<sub>t</sub> | W | Useful fluid output power |
+| **Shaft Input Power** | *P*<sub>a</sub> | *P*<sub>a</sub> = ω · τ | W | Mechanical power supplied to the rotor shaft |
+| **Total-to-Total Efficiency** | η<sub>t</sub> | η<sub>t</sub> = *P*<sub>u</sub> / *P*<sub>a</sub> | − | Overall energy conversion efficiency |
+| **Flow Coefficient** | Φ | Φ = *q*<sub>V</sub> / ((π/4) *D*² · *u*<sub>tip</sub>) | − | Non-dimensional axial velocity ratio |
+| **Pressure Coefficient** | Ψ | Ψ = Δ*p*<sub>t</sub> / (½ ρ<sub>a</sub> *u*<sub>tip</sub>²) | − | Non-dimensional pressure loading capacity |
+
+---
+
+## 3.2. <u>ISO 5801:2019 Application & Test Bench Architecture</u>
+
+### 3.2.1 Installation Category Selection
+
+In accordance with **UNE-EN ISO 5801:2019 (Clause 5 & 6)**, fan installations are categorized into types A, B, C, and D based on duct connections. For our 120 mm cooling fan, we implement a **Category B setup (Free Inlet, Ducted Outlet)**. This configuration accurately replicates real-world PC tower operation, where the fan draws ambient air freely from the surroundings and discharges it through internal ducting or across heatsink fin arrays.
+
+![Figure 1 - Fan Installation Categories](https://github.com/UPC-Fluid-Mechanics/2026-Team03/blob/main/Release_01_Images/Figure%201%20-%20Fan%20Installation%20Categories.png)
+
+_Source Reference:_ UNE-EN ISO 5801:2019, Clause 5, Figure 1 (Page 14). _Figure Caption:_ Standardized fan installation categories defined in ISO 5801. Our test rig corresponds to Category B (unobstructed free intake at Plane 1 and a continuous discharge airway at Plane 2).
+
+### 3.2.2 Standardized Airway Layout (LD & oCS)
+
+The test rig consists of a cylindrical acrylic/PVC duct with an internal diameter matched to the fan outer casing (*D* = 120 mm). Downstream of the fan, an **Outlet Common Segment (oCS)** provides straight duct lengths to allow boundary layers to stabilize and eliminate flow distortion:
+
+- **Distance to Flow Straightener:** Located 2*D* to 3*D* downstream of the fan exit.
+- **Distance to Pressure Tapping Plane (Plane 4):** Located at least 4*D* downstream of the straightener.
+- **Total Downstream Straight Length:** ≥ 6*D* (720 mm) ahead of flow rate metering.
+
+![Figure 6 - Long Duct (LD) layout and dimensions.png](https://github.com/UPC-Fluid-Mechanics/2026-Team03/blob/main/Release_01_Images/Figure%206%20-%20Long%20Duct%20(LD)%20layout%20and%20dimensions.png)
+
+![Figure K.1 - Exemple setup configuration & Modular units.png](https://github.com/UPC-Fluid-Mechanics/2026-Team03/blob/main/Release_01_Images/Figure%20K.1%20-%20Exemple%20setup%20configuration%20%26%20Modular%20units.png)
+
+_Source Reference:_ UNE-EN ISO 5801:2019, Clause 8.6, Figure 6 (Page 23) and Annex K, Figure K.1 (Page 141). _Figure Caption:_ General assembly of the ISO 5801 Category B ducted test bench, detailing modular sections: fan mounting bracket, outlet segment (`oCS`), straightener plane, piezometer tapping station (Plane 4), and throttling gate.
+
+### 3.2.3 Swirl Elimination via Flow Straightener
+
+Axial impellers impart a significant tangential swirl velocity component (*v*<sub>θ</sub>) into the discharge jet. Under ISO 5801 Clause 10.3 and Annex G, **swirl kinetic energy must not be converted into or credited as static pressure rise**. To eliminate swirl before reaching the pressure sensors, a standardized **star-type straightener** (or a fine cell honeycomb straightener) is installed.
+
+![Figure 12 - Star type flow straightener.png](https://github.com/UPC-Fluid-Mechanics/2026-Team03/blob/main/Release_01_Images/Figure%2012%20-%20Star%20type%20flow%20straightener.png)
+
+
+_Source Reference:_ UNE-EN ISO 5801:2019, Clause 10.3.3, Figure 12 (Page 32) and Annex G (Page 129). _Figure Caption:_ Standardized 8-bladed star straightener designed to suppress tangential vorticity and align streamlines strictly in the axial direction upstream of static pressure tappings.
+
+### 3.2.4 Variable Supply System (VSS Throttle)
+
+To map the fan's complete aerodynamic curve from **Free Delivery** (Δ*p* = 0) to **Stall / Shut-off** (*q*<sub>V</sub> = 0), an adjustable conical plug or iris throttle gate is placed at the duct outlet. Operating points are scanned across 8 to 10 stabilized positions, holding each state for at least 60 seconds to satisfy ISO 5801 steady-state averaging criteria.
+
+---
+
+## 3.3. <u>Proposed Instrumentation Chain & Data Acquisition</u>
+
+  DATA ACQUISITION CHAIN
+
+| Physical Variable  | Primary Transducer             | DAQ / Interface  |
+| ------------------ | ------------------------------ | ---------------- |
+| Static Pressure    | Keller PD-39X Transducer       | RS485 / Modbus   |
+| Airflow Rate       | ISO 5167 Nozzle + Diff. Press. | Analog (0-10 V)  |
+| Rotational Speed   | Optical Laser Tachometer       | Counter / Timer  |
+| Power Input        | Precision Shunt + Hall Sensor  | 16-bit ADC Board |
+| Ambient ($P_a, T$) | Digital Barometer + Pt100 RTD  | I2C / SPI Module |
+
+### 3.3.1 Static Pressure Tappings & Piezometer Ring
+
+Because compact PC cooling fans operate at low pressures (10 Pa to 150 Pa), pressure signals are highly sensitive to wall tap quality. In accordance with ISO 5801 Clause 12.8, static pressure at Plane 4 is captured using a **four-tap piezometer ring**:
+
+- Four orifices are drilled at 90° circumferential intervals and joined by a balanced manifold ring to average out peripheral pressure asymmetries.
+- Taps are precision-machined (*d* = 0.8 mm), strictly perpendicular to the inner duct surface, and completely deburred to prevent recirculating cavity eddies from artificially elevating measured static pressure (*P*<sub>SP</sub> > *P*<sub>s</sub>).
+
+![Figure 29 - Tapping connections to obtain average static pressure (Piezometer Ring).png](https://github.com/UPC-Fluid-Mechanics/2026-Team03/blob/main/Release_01_Images/Figure%2029%20-%20Tapping%20connections%20to%20obtain%20average%20static%20pressure%20(Piezometer%20Ring).png)
+
+![Figure 30 - Construction of wall pressure tappings.png](https://github.com/UPC-Fluid-Mechanics/2026-Team03/blob/main/Release_01_Images/Figure%2030%20-%20Construction%20of%20wall%20pressure%20tappings.png)
+
+*Source Reference:* UNE-EN ISO 5801:2019, Clause 12.8, Figure 29 & 30 (Pages 49–50) and Course Slides `02-Pressure_Measurements.pdf` (Slides 22–27).  
+*Figure Caption:* (Left) Toroidal piezometer ring connecting four orthogonal wall pressure taps. (Right) Correct orifice geometry (*L*/*d* ≥ 2, sharp, burr-free edge) vs. improper chamfered taps that induce measurement-biasing cavity vortices.
+
+### 3.3.2 Airflow Rate Metering: Differential Pressure Constriction
+
+Airflow is measured in-line using a standardized differential constriction device (ISO 5167 / ISO 5801 Annex A elliptical nozzle). By capturing the differential pressure drop (Δ*p*<sub>nozzle</sub>) between the upstream settling duct and the nozzle throat, mass and volume flow rates are calculated analytically via standard discharge coefficients (*C*<sub>d</sub>).
+
+![Figure A.3 - Nozzle geometry.png](https://github.com/UPC-Fluid-Mechanics/2026-Team03/blob/main/Release_01_Images/Figure%20A.3%20-%20Nozzle%20geometry.png)
+
+![Figure A.7 - Conical or bellmouth inlet flow metering installations.png](https://github.com/UPC-Fluid-Mechanics/2026-Team03/blob/main/Release_01_Images/Figure%20A.7%20-%20Conical%20or%20bellmouth%20inlet%20flow%20metering%20installations.png)
+
+*Source Reference:* UNE-EN ISO 5801:2019, Annex A, Figure A.3 & A.7 (Pages 83 & 88).  
+*Figure Caption:* Geometry of the ISO 5801 calibrated elliptical constriction nozzle, showing throat diameter ratio (β = *d*/*D*) and tap planes for differential pressure metering
+
+### 3.3.3 Rotational Speed (*N*) & Calibrated Motor Shaft Power (*P*<sub>a</sub>)
+
+Direct inline torque sensors cannot fit inside an integrated 120 mm PC fan hub. Instead, we implement the **calibrated motor method** (ISO 5801 Clause 12.4.3.4):
+
+1. **Speed (*N*):** Measured using a non-contact optical tachometer counting laser reflections off a blade tip, cross-verified with the internal Hall-effect pulse pin.
+2. **Electrical Input (*P*<sub>e</sub>):** Monitored via high-precision voltage and current sense circuitry (*P*<sub>e</sub> = *V* · *I*).
+3. **Shaft Power (*P*<sub>a</sub>):** Derived by subtracting pre-calibrated motor copper losses and bearing friction losses from electrical input power (*P*<sub>a</sub> = *P*<sub>e</sub> · η<sub>motor</sub> − *P*<sub>loss</sub>).
+
+---
+
+## 3.4. <u>Bill of Materials & Selected Test Bench Components</u>
+
+| Subsystem | Component Description | Manufacturer / Model | Selected Specifications |
+| :--- | :--- | :--- | :--- |
+| **Duct Airway** | Cylindrical transparent test duct | Custom Cast Acrylic | *D*<sub>in</sub> = 120 mm, Length = 1.2 m, Wall = 4 mm |
+| **Straightener** | Star-type anti-swirl straightener | 3D Printed (PLA/PETG) | 8 radial blades, *L* = 2*D* = 240 mm, thickness 0.8 mm |
+| **Pressure Sensor** | Ultra-low differential transmitter | **KELLER PD-39X** (or WIKA DPT) | Range: 0 – 250 Pa, Accuracy: ±0.1% FS, RS485 |
+| **Flow Meter** | Calibrated elliptical nozzle | Precision CNC Aluminum | Throat *d* = 60 mm (β = 0.50), ISO 5167 profile |
+| **Speed Sensor** | Digital optical tachometer | Monarch / Compact Laser | Range: 0 – 5000 rpm, Resolution: 1 rpm, ±0.05% |
+| **Ambient Sensing** | Barometric & RTD sensor unit | Bosch BME280 / Pt100 | *p*<sub>a</sub>: 900 – 1100 hPa (±1 hPa), *T*: ±0.2 °C |
+| **Throttle (VSS)** | Adjustable iris / conical baffle | Custom 3D Printed / Metallic | Stepper-actuated continuous throttling gate |
+| **DAQ System** | Multi-channel data logger | National Instruments / LabJack | 16-bit analog differential inputs, USB/Ethernet |
+
+---
+
+## 3.5. <u>Data Reduction Pipeline & Uncertainty Analysis</u>
+
+### 3.5.1 Analytical Data Reduction
+
+From the raw environmental and physical readings, the data reduction algorithm executes the following sequence:
+
+1. **Air Density (ρ<sub>a</sub>):**
+
+<p align="center">
+  <img src="https://latex.codecogs.com/svg.image?\rho_a=\frac{p_a-0.378\cdot\phi_{\text{rel}}\cdot%20p_{\text{sat}}(T_a)}{R_{\text{spec}}\cdot%20T_a}" alt="Air Density" />
+</p>
+
+2. **Volumetric Airflow Rate (*q*<sub>V</sub>):**
+
+<p align="center">
+  <img src="https://latex.codecogs.com/svg.image?q_V=C_d\cdot\frac{\pi%20d^2}{4}\sqrt{\frac{2\Delta%20p_{\text{nozzle}}}{\rho_a(1-\beta^4)}}" alt="Volumetric Airflow Rate" />
+</p>
+
+3. **Fan Total Pressure Rise (Δ*p*<sub>t</sub>):**
+
+<p align="center">
+  <img src="https://latex.codecogs.com/svg.image?\Delta%20p_t=(p_{s4}-p_a)%2B\frac{1}{2}\rho_a\left(\frac{q_V}{\frac{\pi%20D^2}{4}}\right)^2" alt="Fan Total Pressure Rise" />
+</p>
+
+4. **Overall Total Efficiency (η<sub>t</sub>):**
+
+<p align="center">
+  <img src="https://latex.codecogs.com/svg.image?\eta_t=\frac{q_V\cdot\Delta%20p_t}{P_a}" alt="Overall Total Efficiency" />
+</p>
+   
+### 3.5.2 Uncertainty Propagation (Root-Sum-Square)
+
+In compliance with ISO 5801 Clause 17 and experimental error theory, uncertainties are propagated using first-order Taylor series expansions. For any derived quantity *F*(*x*<sub>1</sub>, *x*<sub>2</sub>, ..., *x*<sub>n</sub>):
+
+<p align="center">
+  <img src="https://latex.codecogs.com/svg.image?\sigma_F=\sqrt{\sum_{i=1}^n\left(\frac{\partial%20F}{\partial%20x_i}\sigma_{x_i}\right)^2}" alt="Uncertainty Propagation" />
+</p>
+
+For total fan efficiency (η<sub>t</sub>), the relative combined standard uncertainty is:
+
+<p align="center">
+  <img src="https://latex.codecogs.com/svg.image?\frac{\sigma_{\eta_t}}{\eta_t}=\sqrt{\left(\frac{\sigma_{qV}}{q_V}\right)^2%2B\left(\frac{\sigma_{\Delta%20pt}}{\Delta%20p_t}\right)^2%2B\left(\frac{\sigma_{Pa}}{P_a}\right)^2}" alt="Relative Combined Standard Uncertainty" />
+</p>
+
+
+All final experimental curves will be presented with **95% confidence error bars** (*U* = 2 · σ<sub>F</sub>).
+
+![Figure — Expected Fan Characteristic Curves with Error Bands](https://github.com/UPC-Fluid-Mechanics/2026-Team03/blob/main/Release_01_Images/Typical%20Experimental%20Characteristic%20Curves.png) 
+
+*Source Reference:* Typical fan rating curve per ISO 5801 Clause 16 / AMCA 210.  
+*Figure Caption:* Expected output performance curves: Fan Total Pressure (Δ*p*<sub>t</sub> [Pa]) and Efficiency (η<sub>t</sub> [%]) vs. Flow Rate (*q*<sub>V</sub> [m³/h]), featuring ±2σ error bars for validation against 1D design and CFD predictions.
+
+
+
